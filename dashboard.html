@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Rezerwacji IT - Panel</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <nav>
+        <div class="logo">System Rezerwacji IT</div>
+        <ul>
+            <li><a href="#" onclick="showSection('katalog')">Katalog</a></li>
+            <li><a href="#" onclick="showSection('moje')">Moje Rezerwacje</a></li>
+            <li><a href="#" onclick="showSection('profil')">Profil</a></li>
+            <li id="adminMenuItem" style="display:none;"><a href="#" onclick="openModal('add')" style="color: #f1c40f; font-weight: bold;">+ Dodaj Sprzęt</a></li>
+            <li><a href="index.html">Wyloguj</a></li>
+        </ul>
+    </nav>
+
+    <div class="container">
+        <section id="section-katalog" class="content-section">
+            <header class="dashboard-header">
+                <h2>Katalog Dostępnego Sprzętu</h2>
+                <p id="userStatus"></p>
+            </header>
+            <div class="equipment-grid" id="productGrid"></div>
+        </section>
+
+        <section id="section-moje" class="content-section" style="display:none;">
+            <header class="dashboard-header">
+                <h2>Moje Aktywne Rezerwacje</h2>
+                <p>Tutaj znajdziesz sprzęt, który obecnie wypożyczasz.</p>
+            </header>
+            <div class="equipment-grid" id="myReservationsGrid"></div>
+        </section>
+
+        <section id="section-profil" class="content-section" style="display:none;">
+            <header class="dashboard-header">
+                <h2>Mój Profil</h2>
+            </header>
+            <div class="card-body" style="background: white; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <p style="margin-bottom: 10px;"><strong>Imię i Nazwisko:</strong> <span id="profNameDisplay"></span></p>
+                <p style="margin-bottom: 10px;"><strong>Rola w systemie:</strong> <span id="profRoleDisplay"></span></p>
+                <p><strong>Email:</strong> 117318@student.uthrad.pl</p>
+            </div>
+        </section>
+    </div>
+
+    <div id="productModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modalTitle">Zarządzaj Produktem</h2>
+            <form id="productForm">
+                <input type="hidden" id="editId">
+                <div class="form-group">
+                    <label>Nazwa Sprzętu</label>
+                    <input type="text" id="prodName" required placeholder="np. Laptop Dell">
+                </div>
+                <div class="form-group">
+                    <label>Specyfikacja (Opis)</label>
+                    <textarea id="prodDesc" rows="3" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Wgraj zdjęcie (opcjonalnie)</label>
+                    <input type="file" id="prodImg" accept="image/*" onchange="previewImage(event)">
+                    <img id="imgPreview" src="" style="display:none; max-width:100%; margin-top:10px; border-radius:5px;">
+                </div>
+                <button type="submit" class="btn btn-primary">Zapisz Zmiany</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        const role = localStorage.getItem('userRole');
+        let currentImg = "";
+
+        // 1. ODCZYT Z LOCALSTORAGE: Pobierz dane z pamięci stałej przeglądarki
+        let products = JSON.parse(localStorage.getItem('systemProducts'));
+
+        // Jeśli pamięć jest pusta (pierwsze włączenie), utwórz listę startową
+        if (!products) {
+            products = [
+                { id: 1, name: "Laptop Dell XPS", desc: "i7, 16GB RAM, 512GB SSD", img: "", status: "available" },
+                { id: 2, name: "Projektor Epson", desc: "Full HD, 3500 lumenów", img: "", status: "available" }
+            ];
+            saveToLocalStorage(); // Zapisz domyślne do pamięci
+        }
+
+        // 2. FUNKCJA ZAPISU DO LOCALSTORAGE: Wywoływana przy każdej zmianie danych
+        function saveToLocalStorage() {
+            localStorage.setItem('systemProducts', JSON.stringify(products));
+        }
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.content-section').forEach(s => s.style.display = 'none');
+            document.getElementById('section-' + sectionId).style.display = 'block';
+            
+            if(sectionId === 'moje') renderMyReservations();
+            if(sectionId === 'katalog') render();
+        }
+
+        function init() {
+            const isAtmin = (role === 'admin');
+            document.getElementById('userStatus').innerText = "Status sesji: " + (isAtmin ? "Administrator IT" : "Użytkownik");
+            document.getElementById('profNameDisplay').innerText = isAtmin ? "Igor Szczęsny (Admin)" : "Mateusz Wojciechowski (Student)";
+            document.getElementById('profRoleDisplay').innerText = isAtmin ? "Administrator Systemu" : "Student / Użytkownik końcowy";
+            
+            if(isAtmin) document.getElementById('adminMenuItem').style.display = "block";
+            render();
+        }
+
+        function render() {
+            const grid = document.getElementById('productGrid');
+            grid.innerHTML = "";
+            products.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div class="card-img" style="background-image: url('${p.img || ''}')">${!p.img ? '💻' : ''}</div>
+                    <div class="card-body">
+                        <div class="status ${p.status === 'available' ? 'status-available' : 'status-reserved'}">
+                            ${p.status === 'available' ? 'Dostępny' : 'Zarezerwowany'}
+                        </div>
+                        <h3>${p.name}</h3>
+                        <p>${p.desc}</p>
+                        ${role === 'admin' ? `
+                            <button class="btn" style="background:#f39c12; color:white; margin-bottom:5px;" onclick="openModal('edit', ${p.id})">Edytuj Dane</button>
+                            <button class="btn" style="background:#e74c3c; color:white;" onclick="remove(${p.id})">Usuń z Systemu</button>
+                        ` : `
+                            <button class="btn btn-primary" ${p.status !== 'available' ? 'disabled style="background:#ccc"' : `onclick="reserve(${p.id})"`}>
+                                ${p.status === 'available' ? 'Zarezerwuj Teraz' : 'Obecnie Zajęty'}
+                            </button>
+                        `}
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function renderMyReservations() {
+            const myGrid = document.getElementById('myReservationsGrid');
+            const reserved = products.filter(p => p.status === 'reserved');
+            
+            if(reserved.length === 0) {
+                myGrid.innerHTML = "<p style='padding:20px;'>Nie masz jeszcze zarezerwowanego żadnego sprzętu.</p>";
+                return;
+            }
+            myGrid.innerHTML = "";
+            reserved.forEach(p => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div class="card-img" style="background-image: url('${p.img || ''}')">${!p.img ? '💻' : ''}</div>
+                    <div class="card-body">
+                        <h3>${p.name}</h3>
+                        <p style="margin-bottom:15px; color:#666;">${p.desc}</p>
+                        <button class="btn" style="background:#34495e; color:white;" onclick="returnItem(${p.id})">Zwróć sprzęt</button>
+                    </div>
+                `;
+                myGrid.appendChild(card);
+            });
+        }
+
+        function reserve(id) { 
+            products.find(x => x.id === id).status = "reserved"; 
+            saveToLocalStorage(); // ZAPIS TRWAŁY
+            alert("Sprzęt został przypisany do Twojego konta!");
+            render(); 
+        }
+
+        function returnItem(id) {
+            products.find(x => x.id === id).status = "available";
+            saveToLocalStorage(); // ZAPIS TRWAŁY
+            alert("Sprzęt został zwrócony do magazynu.");
+            renderMyReservations();
+        }
+
+        function remove(id) { 
+            if(confirm("Usunąć produkt z bazy danych?")) { 
+                products = products.filter(x => x.id !== id); 
+                saveToLocalStorage(); // ZAPIS TRWAŁY
+                render(); 
+            } 
+        }
+
+        function openModal(mode, id = null) {
+            document.getElementById('productForm').reset();
+            document.getElementById('imgPreview').style.display = "none";
+            currentImg = "";
+            if(mode === 'edit') {
+                const p = products.find(x => x.id === id);
+                document.getElementById('editId').value = p.id;
+                document.getElementById('prodName').value = p.name;
+                document.getElementById('prodDesc').value = p.desc;
+                if(p.img) {
+                    document.getElementById('imgPreview').src = p.img;
+                    document.getElementById('imgPreview').style.display = "block";
+                    currentImg = p.img;
+                }
+                document.getElementById('modalTitle').innerText = "Edytuj Dane Sprzętu";
+            } else {
+                document.getElementById('editId').value = "";
+                document.getElementById('modalTitle').innerText = "Dodaj Nowy Sprzęt do Bazy";
+            }
+            document.getElementById('productModal').style.display = "flex";
+        }
+
+        function closeModal() { document.getElementById('productModal').style.display = "none"; }
+
+        function previewImage(e) {
+            const reader = new FileReader();
+            reader.onload = () => {
+                currentImg = reader.result;
+                document.getElementById('imgPreview').src = currentImg;
+                document.getElementById('imgPreview').style.display = "block";
+            };
+            if(e.target.files[0]) {
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        }
+
+        document.getElementById('productForm').onsubmit = (e) => {
+            e.preventDefault();
+            const id = document.getElementById('editId').value;
+            const name = document.getElementById('prodName').value;
+            const desc = document.getElementById('prodDesc').value;
+
+            if(id) {
+                // Edycja istniejącego produktu
+                const p = products.find(x => x.id == id);
+                p.name = name; 
+                p.desc = desc; 
+                if(currentImg) p.img = currentImg;
+            } else {
+                // Dodawanie zupełnie nowego produktu
+                products.push({ id: Date.now(), name, desc, img: currentImg, status: "available" });
+            }
+            
+            saveToLocalStorage(); // ZAPIS TRWAŁY DO PAMIĘCI PRZEGLĄDARKI
+            closeModal(); 
+            render();
+        };
+        
+        init();
+    </script>
+</body>
+</html>
